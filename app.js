@@ -3,7 +3,7 @@
    Dateiformat im Repo: {"version":1,"recs":{<schluessel>:{...,"u":<ms>}}}
    Abgleich pro Datensatz: der mit dem größeren "u" gewinnt; Löschen = {"del":true}. */
 "use strict";
-const DEF_REPO = "antonettylukas/futterbuch-daten";
+const DEF_REPO = "antonettylukas/futterbuch-_daten";
 const MEALS = [["frueh","Frühstück"],["mittag","Mittag"],["snack","Snack"],["abend","Abend"],["extra","Sonstiges"]];
 const MEALNAME = Object.fromEntries(MEALS);
 const WD = ["So","Mo","Di","Mi","Do","Fr","Sa"];
@@ -440,7 +440,7 @@ function renderSync(){
       <ol class="steps">
         <li>Öffne <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com → Fine-grained token</a>.</li>
         <li>Name: <code>Futterbuch Handy</code>, Ablauf: so lang wie möglich.</li>
-        <li>Repository access: <b>Only select repositories</b> → <code>futterbuch-daten</code>.</li>
+        <li>Repository access: <b>Only select repositories</b> → <code>futterbuch-_daten</code>.</li>
         <li>Permissions → Repository → <b>Contents: Read and write</b>.</li>
         <li>Erstellen, Schlüssel kopieren und oben einfügen.</li>
       </ol></div>`;
