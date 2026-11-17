@@ -3,7 +3,7 @@
    Dateiformat im Repo: {"version":1,"recs":{<schluessel>:{...,"u":<ms>}}}
    Abgleich pro Datensatz: der mit dem größeren "u" gewinnt; Löschen = {"del":true}. */
 "use strict";
-const VERSION = "7 (17.11. 14:35)";
+const VERSION = "8 (17.11. 18:40)";
 const DEF_REPO = "antonettylukas/futterbuch-_daten";
 const MEALS = [["frueh","Frühstück"],["mittag","Mittag"],["snack","Snack"],["abend","Abend"],["extra","Sonstiges"]];
 const MEALNAME = Object.fromEntries(MEALS);
@@ -179,9 +179,12 @@ function planToLog(key){
 
 /* ---------- Sheets ---------- */
 let sheetCleanup=null;
-function closeSheet(){if(sheetCleanup){sheetCleanup();sheetCleanup=null}$("#sheetroot").innerHTML=""}
+let lockY=0;
+function lock(on){const b=document.body;if(on&&!b.classList.contains("locked")){lockY=window.scrollY;b.style.top=-lockY+"px";b.classList.add("locked")}else if(!on&&b.classList.contains("locked")){b.classList.remove("locked");b.style.top="";window.scrollTo(0,lockY)}}
+function closeSheet(){if(sheetCleanup){sheetCleanup();sheetCleanup=null}$("#sheetroot").innerHTML="";lock(false)}
 function openSheet(inner,onReady){
   closeSheet();
+  lock(true);
   $("#sheetroot").innerHTML=`<div class="backdrop" id="bd"><div class="sheet" role="dialog" aria-modal="true">${inner}</div></div>`;
   $("#bd").addEventListener("click",e=>{if(e.target.id==="bd")closeSheet()});
   onReady&&onReady($("#sheetroot .sheet"));
