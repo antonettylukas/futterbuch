@@ -3,7 +3,7 @@
    Dateiformat im Repo: {"version":1,"recs":{<schluessel>:{...,"u":<ms>}}}
    Abgleich pro Datensatz: der mit dem größeren "u" gewinnt; Löschen = {"del":true}. */
 "use strict";
-const VERSION = "8 (17.11. 18:40)";
+const VERSION = "9 (17.11. 19:05)";
 const DEF_REPO = "antonettylukas/futterbuch-_daten";
 const MEALS = [["frueh","Frühstück"],["mittag","Mittag"],["snack","Snack"],["abend","Abend"],["extra","Sonstiges"]];
 const MEALNAME = Object.fromEntries(MEALS);
@@ -211,7 +211,7 @@ function addFlow(meal){
     res.addEventListener("click",e=>{const b=e.target.closest("[data-pick]");if(b){const f=food(b.dataset.pick);amountSheet({lm:b.dataset.pick,m:meal,g:f.portion||100},null)}});
     sh.querySelector("#scan").onclick=()=>scanSheet(id=>amountSheet({lm:id,m:meal,g:food(id).portion||100},null));
     sh.querySelector("#off").onclick=()=>offSheet(q.value,id=>amountSheet({lm:id,m:meal,g:food(id).portion||100},null));
-    sh.querySelector("#rzb").onclick=()=>pickRecipe(rid=>cookSheet(rid,meal));
+    sh.querySelector("#rzb").onclick=()=>pickRecipe(rid=>cookSheet(rid,meal),meal);
     sh.querySelector("#cancel").onclick=closeSheet;
   });
 }
@@ -382,9 +382,14 @@ function renderRz(){
   drawRz();
 }
 function drawRz(){const l=$("#rzlist");if(!l)return;const ws=norm($("#rzq").value).split(/\s+/).filter(Boolean);l.innerHTML=rzRows(rzList().filter(r=>ws.every(w=>norm(r.name+" "+(r.kat||"")).includes(w))),"data-rz")}
-function pickRecipe(onPick){
-  openSheet(`<h2>Rezept wählen</h2><div class="list" id="pr">${rzRows(rzList(),"data-pr")}</div><button class="ghost" id="cancel">Abbrechen</button>`,sh=>{
-    sh.querySelector("#pr").addEventListener("click",e=>{const b=e.target.closest("[data-pr]");if(b)onPick(b.dataset.pr)});
+function pickRecipe(onPick,meal){
+  const pref={frueh:"Frühstück",snack:"Snack"}[meal]||"Hauptgericht";
+  const all=rzList().sort((a,b)=>((b.kat===pref)-(a.kat===pref))||a.name.localeCompare(b.name,"de"));
+  openSheet(`<h2>Rezept wählen</h2><input class="search" id="rq" type="search" placeholder="Rezept suchen" autocomplete="off"><div class="list" id="pr" style="max-height:55vh;overflow-y:auto;overscroll-behavior:contain"></div><button class="ghost" id="cancel">Abbrechen</button>`,sh=>{
+    const pr=sh.querySelector("#pr"),q=sh.querySelector("#rq");
+    const draw=()=>{const ws=norm(q.value).split(/\s+/).filter(Boolean);pr.innerHTML=rzRows(all.filter(r=>ws.every(w=>norm(r.name+" "+(r.kat||"")).includes(w))),"data-pr")};
+    draw();q.addEventListener("input",draw);
+    pr.addEventListener("click",e=>{const b=e.target.closest("[data-pr]");if(b)onPick(b.dataset.pr)});
     sh.querySelector("#cancel").onclick=closeSheet;
   });
 }
