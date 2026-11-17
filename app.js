@@ -252,7 +252,7 @@ function offToFood(p){
   const kcal=n["energy-kcal_100g"]??(n["energy_100g"]!=null?n["energy_100g"]/4.184:undefined);
   if(kcal==null)return null;
   const name=p.product_name_de||p.product_name||p.generic_name||("Produkt "+p.code);
-  const rec={name:name.trim(),marke:(p.brands||"").split(",")[0].trim(),kcal:Math.round(kcal*10)/10,p:+(n.proteins_100g||0),kh:+(n.carbohydrates_100g||0),f:+(n.fat_100g||0),bst:+(n.fiber_100g||0),zucker:+(n.sugars_100g||0),salz:+(n.salt_100g||0),code:String(p.code||""),quelle:"Open Food Facts"};
+  const rec={name:name.trim(),marke:(Array.isArray(p.brands)?p.brands.join(","):String(p.brands||"")).split(",")[0].trim(),kcal:Math.round(kcal*10)/10,p:+(n.proteins_100g||0),kh:+(n.carbohydrates_100g||0),f:+(n.fat_100g||0),bst:+(n.fiber_100g||0),zucker:+(n.sugars_100g||0),salz:+(n.salt_100g||0),code:String(p.code||""),quelle:"Open Food Facts"};
   if(p.serving_quantity&&+p.serving_quantity>0)rec.portion=+p.serving_quantity;
   return rec;
 }
@@ -267,6 +267,20 @@ async function offByCode(code){
   const r=await fetch(OFF+"/api/v2/product/"+encodeURIComponent(code)+".json?fields="+OFF_FIELDS);
   if(!r.ok)return null;const j=await r.json();return j.status===1?j.product:null;
 }
+async function offSearch(t){
+  // 1. neue Suche (search-a-licious, erlaubt Browser-Apps), 2. Rückfall auf die alte Suche
+  const errs=[];
+  try{
+    const r=await fetch("https://search.openfoodfacts.org/search?page_size=30&langs=de,en&fields="+OFF_FIELDS+"&q="+encodeURIComponent(t));
+    if(r.ok){const j=await r.json();return (j.hits||j.products||[]).map(h=>h._source||h)}
+    errs.push("Suche "+r.status);
+  }catch(e){errs.push(e.message)}
+  try{
+    const r=await fetch(OFF+"/api/v2/search?page_size=30&fields="+OFF_FIELDS+"&categories_tags_de="+encodeURIComponent(t));
+    if(r.ok){const j=await r.json();if((j.products||[]).length)return j.products}
+  }catch(e){errs.push(e.message)}
+  throw new Error(errs.join(", "));
+}
 function offSheet(query,onPick){
   openSheet(`<h2>Open Food Facts</h2>
     <div class="btnrow"><input class="search" id="oq" type="search" placeholder="Produkt oder Marke" value="${esc(query||"")}" style="flex:1;min-width:0"><button class="primary" id="go" style="flex:0 0 auto">Suchen</button></div>
@@ -279,8 +293,7 @@ function offSheet(query,onPick){
       h.textContent="Suche …";res.hidden=true;
       try{
         if(/^\d{8,14}$/.test(t)){const p=await offByCode(t);found=p?[p]:[]}
-        else{const r=await fetch(OFF+"/cgi/search.pl?search_simple=1&action=process&json=1&page_size=30&lc=de&fields="+OFF_FIELDS+"&search_terms="+encodeURIComponent(t));
-          if(!r.ok)throw new Error("Status "+r.status);found=((await r.json()).products||[])}
+        else found=await offSearch(t);
         found=found.filter(p=>offToFood(p));
         h.textContent=found.length?found.length+" Treffer (Werte pro 100 g):":"Nichts gefunden. Du kannst das Produkt unter „Produkte“ von Hand anlegen.";
         res.innerHTML=found.map((p,i)=>{const f=offToFood(p);return `<button class="row" data-i="${i}"><span class="n">${esc(f.name)}</span><span class="num">${r0(f.kcal)} kcal</span><span class="m">${esc(f.marke)}${p.quantity?" · "+esc(p.quantity):""} · P ${r1(f.p)} · KH ${r1(f.kh)} · F ${r1(f.f)}</span></button>`}).join("");
