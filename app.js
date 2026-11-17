@@ -3,7 +3,7 @@
    Dateiformat im Repo: {"version":1,"recs":{<schluessel>:{...,"u":<ms>}}}
    Abgleich pro Datensatz: der mit dem größeren "u" gewinnt; Löschen = {"del":true}. */
 "use strict";
-const VERSION = "6 (17.11. 14:15)";
+const VERSION = "7 (17.11. 14:35)";
 const DEF_REPO = "antonettylukas/futterbuch-_daten";
 const MEALS = [["frueh","Frühstück"],["mittag","Mittag"],["snack","Snack"],["abend","Abend"],["extra","Sonstiges"]];
 const MEALNAME = Object.fromEntries(MEALS);
@@ -269,21 +269,34 @@ async function offByCode(code){
   if(!r.ok)return null;const j=await r.json();return j.status===1?j.product:null;
 }
 const offCache=new Map();let offLast=0;
-async function offSearch(t){
-  // Open Food Facts erlaubt nur ~10 Suchen pro Minute; bei Überschreitung kommt die Antwort ohne CORS-Header ("Failed to fetch").
-  const key=norm(t);if(offCache.has(key))return offCache.get(key);
-  const url="https://search.openfoodfacts.org/search?page_size=30&langs=de,en&fields="+OFF_FIELDS+"&q="+encodeURIComponent(t);
-  for(let i=0;i<2;i++){
-    const wait=offLast+6500-Date.now();if(wait>0)await new Promise(r=>setTimeout(r,wait));
-    offLast=Date.now();
+const STOP=new Set(["mit","und","ohne","von","der","die","das","im","in","aus","tk","bio","de","la","le","au","a"]);
+async function offQuery(q){
+  // Open Food Facts erlaubt nur ~10 Suchen pro Minute; abgelehnte oder fehlerhafte Antworten kommen ohne CORS-Header ("Failed to fetch").
+  const key=norm(q);if(offCache.has(key))return offCache.get(key);
+  const wait=offLast+6500-Date.now();if(wait>0)await new Promise(r=>setTimeout(r,wait));
+  offLast=Date.now();
+  const r=await fetch("https://search.openfoodfacts.org/search?page_size=50&langs=de,en&fields="+OFF_FIELDS+"&q="+encodeURIComponent(q));
+  if(!r.ok)throw new Error("Status "+r.status);
+  const j=await r.json();const res=(j.hits||j.products||[]).map(h=>h._source||h);offCache.set(key,res);return res;
+}
+async function offSearch(t,onStatus){
+  const words=norm(t).split(/[^a-z0-9äöüß]+/).filter(w=>w.length>1&&!STOP.has(w));
+  if(!words.length)words.push(norm(t));
+  const tries=[words.join(" ")];
+  const longest=[...words].sort((a,b)=>b.length-a.length)[0];
+  if(words.length>1)tries.push(longest);
+  tries.push(longest);  // letzter Versuch nach Pause
+  let last="";
+  for(let i=0;i<tries.length;i++){
     try{
-      const r=await fetch(url);
-      if(r.ok){const j=await r.json();const res=(j.hits||j.products||[]).map(h=>h._source||h);offCache.set(key,res);return res}
-      if(r.status!==429&&r.status<500)throw new Error("Status "+r.status);
-    }catch(e){if(i===1)throw new Error("zu viele Suchen kurz hintereinander oder Server überlastet")}
-    await new Promise(r=>setTimeout(r,8000));
+      const res=await offQuery(tries[i]);
+      if(tries[i]===words.join(" "))return res;
+      // nur mit dem Hauptwort gesucht: lokal nach den übrigen Wörtern sortieren
+      const score=p=>{const h=norm((p.product_name_de||p.product_name||"")+" "+(p.generic_name||"")+" "+[].concat(p.brands||[]).join(" "));return words.filter(w=>h.includes(w)).length};
+      return res.map(p=>[score(p),p]).sort((a,b)=>b[0]-a[0]).map(x=>x[1]);
+    }catch(e){last=e.message;if(onStatus)onStatus("Versuche es anders … ("+(i+1)+"/"+tries.length+")");if(i===tries.length-2)await new Promise(r=>setTimeout(r,8000))}
   }
-  throw new Error("zu viele Suchen kurz hintereinander");
+  throw new Error(last==="Failed to fetch"?"Suche abgelehnt, vermutlich zu viele Anfragen":last);
 }
 function offSheet(query,onPick){
   openSheet(`<h2>Open Food Facts</h2>
@@ -297,7 +310,7 @@ function offSheet(query,onPick){
       h.textContent="Suche … (kann bis zu 15 Sekunden dauern)";res.hidden=true;
       try{
         if(/^\d{8,14}$/.test(t)){const p=await offByCode(t);found=p?[p]:[]}
-        else found=await offSearch(t);
+        else found=await offSearch(t,m=>{h.textContent=m});
         found=found.filter(p=>offToFood(p));
         h.textContent=found.length?found.length+" Treffer (Werte pro 100 g):":"Nichts gefunden. Du kannst das Produkt unter „Produkte“ von Hand anlegen.";
         res.innerHTML=found.map((p,i)=>{const f=offToFood(p);return `<button class="row" data-i="${i}"><span class="n">${esc(f.name)}</span><span class="num">${r0(f.kcal)} kcal</span><span class="m">${esc(f.marke)}${p.quantity?" · "+esc(p.quantity):""} · P ${r1(f.p)} · KH ${r1(f.kh)} · F ${r1(f.f)}</span></button>`}).join("");
