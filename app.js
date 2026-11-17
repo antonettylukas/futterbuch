@@ -41,6 +41,7 @@ async function saveFile(path){await kv.set("f:"+path,F[path])}
 const P = {
   lm: "lebensmittel.json",
   kg: "gewicht.json",
+  rz: "rezepte.json",
   plan: d => "plan/"+month(d)+".json",
   log: d => "tagebuch/"+month(d)+".json",
 };
@@ -109,7 +110,7 @@ async function syncAll(){
   if(syncing){syncAgain=true;return}
   syncing=true;setSync("busy");
   try{
-    const paths=new Set([P.lm,P.kg,P.plan(S.date),P.log(S.date),P.plan(today()),P.log(today()),P.plan(addDays(today(),7)),...Object.keys(F)]);
+    const paths=new Set([P.lm,P.kg,P.rz,P.plan(S.date),P.log(S.date),P.plan(today()),P.log(today()),P.plan(addDays(today(),7)),...Object.keys(F)]);
     for(const p of paths) await syncFile(p);
     S.sync.last=new Date();setSync("ok");
   }catch(e){setSync("err",e.message||String(e))}
@@ -197,7 +198,7 @@ function foodRows(list,attr){
 function addFlow(meal){
   openSheet(`<h2>Eintragen: ${esc(MEALNAME[meal])}</h2>
     <input class="search" id="q" type="search" placeholder="In deinen Lebensmitteln suchen" autocomplete="off">
-    <div class="btnrow"><button class="ghost" id="scan" style="flex:1">Barcode scannen</button><button class="ghost" id="off" style="flex:1">Open Food Facts</button></div>
+    <div class="btnrow"><button class="ghost" id="scan" style="flex:1">Barcode</button><button class="ghost" id="off" style="flex:1">Open Food Facts</button><button class="ghost" id="rzb" style="flex:1">Rezept</button></div>
     <div class="list" id="res"></div>
     <button class="ghost" id="cancel">Abbrechen</button>`,sh=>{
     const q=sh.querySelector("#q"),res=sh.querySelector("#res");
@@ -206,6 +207,7 @@ function addFlow(meal){
     res.addEventListener("click",e=>{const b=e.target.closest("[data-pick]");if(b){const f=food(b.dataset.pick);amountSheet({lm:b.dataset.pick,m:meal,g:f.portion||100},null)}});
     sh.querySelector("#scan").onclick=()=>scanSheet(id=>amountSheet({lm:id,m:meal,g:food(id).portion||100},null));
     sh.querySelector("#off").onclick=()=>offSheet(q.value,id=>amountSheet({lm:id,m:meal,g:food(id).portion||100},null));
+    sh.querySelector("#rzb").onclick=()=>pickRecipe(rid=>cookSheet(rid,meal));
     sh.querySelector("#cancel").onclick=closeSheet;
   });
 }
@@ -280,7 +282,7 @@ function offSheet(query,onPick){
         else{const r=await fetch(OFF+"/cgi/search.pl?search_simple=1&action=process&json=1&page_size=30&lc=de&fields="+OFF_FIELDS+"&search_terms="+encodeURIComponent(t));
           if(!r.ok)throw new Error("Status "+r.status);found=((await r.json()).products||[])}
         found=found.filter(p=>offToFood(p));
-        h.textContent=found.length?found.length+" Treffer (Werte pro 100 g):":"Nichts gefunden. Du kannst das Produkt unter „Lebensmittel“ von Hand anlegen.";
+        h.textContent=found.length?found.length+" Treffer (Werte pro 100 g):":"Nichts gefunden. Du kannst das Produkt unter „Produkte“ von Hand anlegen.";
         res.innerHTML=found.map((p,i)=>{const f=offToFood(p);return `<button class="row" data-i="${i}"><span class="n">${esc(f.name)}</span><span class="num">${r0(f.kcal)} kcal</span><span class="m">${esc(f.marke)}${p.quantity?" · "+esc(p.quantity):""} · P ${r1(f.p)} · KH ${r1(f.kh)} · F ${r1(f.f)}</span></button>`}).join("");
         res.hidden=!found.length;
       }catch(e){h.textContent="Open Food Facts ist gerade nicht erreichbar ("+e.message+"). Bist du online?"}
@@ -306,7 +308,7 @@ function scanSheet(onPick){
       if(own){sheetCleanup();onPick(own[0]);return}
       try{const p=await offByCode(code);
         if(p&&offToFood(p)){const id=await adoptOff(p);sheetCleanup();onPick(id);return}
-        hint.textContent="Produkt "+code+" ist nicht in Open Food Facts. Leg es unter „Lebensmittel“ mit den Werten von der Packung an.";
+        hint.textContent="Produkt "+code+" ist nicht in Open Food Facts. Leg es unter „Produkte“ mit den Werten von der Packung an.";
         sheetCleanup();setTimeout(()=>foodSheet(null,{code}),900);
       }catch(e){hint.textContent="Keine Verbindung zu Open Food Facts. Versuch es online nochmal."}
     };
@@ -326,6 +328,94 @@ function scanSheet(onPick){
   });
 }
 
+/* ---------- Rezepte ---------- */
+function recipes(){return F[P.rz]?F[P.rz].recs:{}}
+function recipe(id){const r=recipes()[id];return r&&!r.del?r:null}
+function rzList(){return live(recipes()).map(([id,r])=>({id,...r})).sort((a,b)=>(a.kat||"").localeCompare(b.kat||"")||a.name.localeCompare(b.name,"de"))}
+function rzRows(list,attr){
+  if(!list.length)return '<div class="leer" style="padding:12px 14px">Noch keine Rezepte.</div>';
+  return list.map(r=>{const s=sum(r.zutaten||[]);return `<button class="row" ${attr}="${esc(r.id)}"><span class="n">${esc(r.name)}${r.kat?`<span class="tag">${esc(r.kat)}</span>`:""}</span><span class="num">${r0(s.kcal)} kcal</span><span class="m num">pro Portion · P ${r0(s.p)} · KH ${r0(s.kh)} · F ${r0(s.f)} · ${(r.zutaten||[]).length} Zutaten</span></button>`}).join("");
+}
+function renderRz(){
+  const v=$("#v-rz");
+  if(!v.querySelector("#rzlist")){
+    v.innerHTML=`<div class="btnrow"><input class="search" id="rzq" type="search" placeholder="Rezept suchen" style="flex:1;min-width:0"><button class="primary" id="rzneu" style="flex:0 0 auto">Neu</button></div>
+      <div class="hint">Mengen pro Portion. Tippe ein Rezept an, um es anzusehen, zu ändern oder einzutragen.</div>
+      <div class="list" id="rzlist"></div>`;
+    v.querySelector("#rzq").addEventListener("input",drawRz);
+    v.querySelector("#rzneu").onclick=()=>recipeSheet(null);
+    v.querySelector("#rzlist").addEventListener("click",e=>{const b=e.target.closest("[data-rz]");if(b)recipeSheet(b.dataset.rz)});
+  }
+  drawRz();
+}
+function drawRz(){const l=$("#rzlist");if(!l)return;const ws=norm($("#rzq").value).split(/\s+/).filter(Boolean);l.innerHTML=rzRows(rzList().filter(r=>ws.every(w=>norm(r.name+" "+(r.kat||"")).includes(w))),"data-rz")}
+function pickRecipe(onPick){
+  openSheet(`<h2>Rezept wählen</h2><div class="list" id="pr">${rzRows(rzList(),"data-pr")}</div><button class="ghost" id="cancel">Abbrechen</button>`,sh=>{
+    sh.querySelector("#pr").addEventListener("click",e=>{const b=e.target.closest("[data-pr]");if(b)onPick(b.dataset.pr)});
+    sh.querySelector("#cancel").onclick=closeSheet;
+  });
+}
+function cookSheet(rid,meal){
+  const r=recipe(rid);if(!r)return;
+  openSheet(`<h2>${esc(r.name)} eintragen</h2>
+    <div class="grid2">
+      <div class="field"><label for="pf">Portionen</label><input id="pf" inputmode="decimal" value="1"></div>
+      <div class="field"><label for="m">Mahlzeit</label><select id="m">${MEALS.map(([k,l])=>`<option value="${k}" ${k===meal?"selected":""}>${l}</option>`).join("")}</select></div>
+    </div>
+    <div class="chips"><button data-f="0.5">½</button><button data-f="1">1</button><button data-f="1.5">1½</button><button data-f="2">2</button></div>
+    <div class="preview num" id="pv"></div>
+    <div class="hint">Jede Zutat wird einzeln eingetragen, so kannst du danach Mengen noch anpassen.</div>
+    <div class="btnrow"><button class="primary" id="ok">Eintragen</button><button class="ghost" id="cancel">Abbrechen</button></div>`,sh=>{
+    const pf=sh.querySelector("#pf"),pv=sh.querySelector("#pv");
+    const upd=()=>{const x=num(pf.value);if(!(x>0)){pv.textContent="Bitte Portionen eingeben.";return}const s=sum((r.zutaten||[]).map(z=>({lm:z.lm,g:z.g*x})));pv.textContent=`${r0(s.kcal)} kcal · Protein ${r1(s.p)} g · KH ${r1(s.kh)} g · Fett ${r1(s.f)} g`};
+    upd();pf.addEventListener("input",upd);
+    sh.querySelector(".chips").addEventListener("click",e=>{const b=e.target.closest("button");if(b){pf.value=b.dataset.f.replace(".",",");upd()}});
+    sh.querySelector("#cancel").onclick=closeSheet;
+    sh.querySelector("#ok").onclick=async()=>{
+      const x=num(pf.value);if(!(x>0))return;const m=sh.querySelector("#m").value;
+      const path=P.log(S.date);const f=await file(path);const t=nowHM();
+      (r.zutaten||[]).forEach((z,i)=>{f.recs[uid()+i]={d:S.date,m,lm:z.lm,g:Math.round(z.g*x*10)/10,t,rezept:rid,u:Date.now()}});
+      f.dirty=true;await saveFile(path);closeSheet();if(S.tab!=="tag")setTab("tag");else render();scheduleSync(1500);
+    };
+  });
+}
+function recipeSheet(id,draft){
+  const r0_=draft||(id?recipe(id):{name:"",kat:"",zutaten:[],notiz:""});
+  const st={zutaten:(r0_.zutaten||[]).map(z=>({...z}))};
+  openSheet(`<h2>${id?"Rezept":"Neues Rezept"}</h2>
+    <div class="grid2"><div class="field"><label for="r-name">Name</label><input id="r-name" value="${esc(r0_.name)}"></div>
+    <div class="field"><label for="r-kat">Kategorie</label><input id="r-kat" list="katl" value="${esc(r0_.kat||"")}"><datalist id="katl"><option value="Hauptgericht"><option value="Frühstück"><option value="Snack"></datalist></div></div>
+    <div class="preview num" id="rs"></div>
+    <div><span class="lbl">Zutaten pro Portion (g)</span><div id="zl"></div></div>
+    <button class="ghost" id="zadd">+ Zutat</button>
+    <div class="field"><label for="r-notiz">Zubereitung / Notizen</label><textarea id="r-notiz">${esc(r0_.notiz||"")}</textarea></div>
+    <div class="fv preview" id="fv" hidden></div>
+    <div class="btnrow">${id?'<button class="primary" id="cook">Eintragen</button>':""}<button class="${id?"ghost":"primary"}" id="ok" style="flex:1">Speichern</button>${id?'<button class="danger" id="del">Löschen</button>':""}<button class="ghost" id="cancel">Schließen</button></div>`,sh=>{
+    const zl=sh.querySelector("#zl"),rs=sh.querySelector("#rs");
+    const draw=()=>{
+      zl.innerHTML=st.zutaten.map((z,i)=>`<div class="zrow"><span class="n">${esc(foodName(z.lm))}</span><input inputmode="decimal" data-zi="${i}" value="${String(z.g).replace(".",",")}" aria-label="Gramm"><button data-zx="${i}" aria-label="Entfernen">✕</button></div>`).join("")||'<div class="hint">Noch keine Zutaten.</div>';
+      const s=sum(st.zutaten);rs.textContent=`pro Portion: ${r0(s.kcal)} kcal · Protein ${r1(s.p)} g · KH ${r1(s.kh)} g · Fett ${r1(s.f)} g · Ballaststoffe ${r1(s.bst)} g`;
+    };
+    draw();
+    zl.addEventListener("input",e=>{const i=e.target.dataset.zi;if(i==null)return;const x=num(e.target.value);if(x>=0){st.zutaten[i].g=x;const s=sum(st.zutaten);rs.textContent=`pro Portion: ${r0(s.kcal)} kcal · Protein ${r1(s.p)} g · KH ${r1(s.kh)} g · Fett ${r1(s.f)} g · Ballaststoffe ${r1(s.bst)} g`}});
+    zl.addEventListener("click",e=>{const b=e.target.closest("[data-zx]");if(b){st.zutaten.splice(+b.dataset.zx,1);draw()}});
+    const collect=()=>({...(id?recipe(id):{}),name:sh.querySelector("#r-name").value.trim(),kat:sh.querySelector("#r-kat").value.trim(),notiz:sh.querySelector("#r-notiz").value,zutaten:st.zutaten.filter(z=>z.g>0)});
+    sh.querySelector("#zadd").onclick=()=>{
+      const keep=collect();
+      openSheet(`<h2>Zutat hinzufügen</h2><input class="search" id="q" type="search" placeholder="Produkt suchen" autocomplete="off"><div class="list" id="res"></div><button class="ghost" id="back">Zurück</button>`,s2=>{
+        const q=s2.querySelector("#q"),res=s2.querySelector("#res");const d2=()=>{res.innerHTML=foodRows(searchFoods(q.value),"data-pick")};d2();q.addEventListener("input",d2);q.focus();
+        const back=extra=>recipeSheet(id,{...keep,zutaten:[...keep.zutaten,...(extra?[extra]:[])]});
+        res.addEventListener("click",e=>{const b=e.target.closest("[data-pick]");if(b){const f=food(b.dataset.pick);back({lm:b.dataset.pick,g:f.portion||100})}});
+        s2.querySelector("#back").onclick=()=>back(null);
+      });
+    };
+    const save=async()=>{const out=collect();const fv=sh.querySelector("#fv");if(!out.name){fv.hidden=false;fv.textContent="Bitte einen Namen eingeben.";return false}delete out.u;delete out.id;await putRec(P.rz,id||("rz-"+uid()),out);return id||true};
+    sh.querySelector("#ok").onclick=async()=>{if(await save())closeSheet()};
+    sh.querySelector("#cancel").onclick=closeSheet;
+    const ck=sh.querySelector("#cook");if(ck)ck.onclick=async()=>{if(await save())cookSheet(id,"abend")};
+    const del=sh.querySelector("#del");if(del)del.onclick=async()=>{if(!del.dataset.armed){del.dataset.armed="1";del.textContent="Wirklich löschen?";return}await putRec(P.rz,id,{...recipe(id),del:true});closeSheet()};
+  });
+}
 /* ---------- Lebensmittel ---------- */
 function renderLm(){
   const v=$("#v-lm");
@@ -455,17 +545,17 @@ function renderSync(){
 
 /* ---------- Navigation ---------- */
 function render(){
-  for(const t of ["tag","lm","kg","sync"]){$("#v-"+t).hidden=S.tab!==t;$("#t-"+t).setAttribute("aria-current",S.tab===t?"page":"false")}
+  for(const t of ["tag","rz","lm","kg","sync"]){$("#v-"+t).hidden=S.tab!==t;$("#t-"+t).setAttribute("aria-current",S.tab===t?"page":"false")}
   for(const id of ["#prev","#next","#heute"])$(id).hidden=S.tab!=="tag";
   if(S.tab==="tag")renderTag();
   else{
-    $("#titel").firstChild.nodeValue={lm:"Lebensmittel",kg:"Gewicht",sync:"Abgleich"}[S.tab];
-    $("#untertitel").textContent=S.tab==="lm"?live(foods()).length+" Einträge":S.tab==="kg"?"":"GitHub";
-    if(S.tab==="lm")renderLm();else if(S.tab==="kg")renderKg();else renderSync();
+    $("#titel").firstChild.nodeValue={rz:"Rezepte",lm:"Produkte",kg:"Gewicht",sync:"Abgleich"}[S.tab];
+    $("#untertitel").textContent=S.tab==="rz"?live(recipes()).length+" Rezepte":S.tab==="lm"?live(foods()).length+" Einträge":S.tab==="kg"?"":"GitHub";
+    if(S.tab==="rz")renderRz();else if(S.tab==="lm")renderLm();else if(S.tab==="kg")renderKg();else renderSync();
   }
 }
 function setTab(t){S.tab=t;render();window.scrollTo(0,0)}
-for(const t of ["tag","lm","kg","sync"])$("#t-"+t).onclick=()=>setTab(t);
+for(const t of ["tag","rz","lm","kg","sync"])$("#t-"+t).onclick=()=>setTab(t);
 async function goDate(d){S.date=d;await file(P.plan(d));await file(P.log(d));render();if(S.cfg.token&&(!F[P.plan(d)].sha||!F[P.log(d)].sha))scheduleSync(200)}
 $("#prev").onclick=()=>goDate(addDays(S.date,-1));
 $("#next").onclick=()=>goDate(addDays(S.date,1));
@@ -485,7 +575,7 @@ setInterval(()=>{if(document.visibilityState==="visible")syncAll()},120000);
   try{
     const cfg=await kv.get("cfg");if(cfg)S.cfg={...S.cfg,...cfg};
     for(const k of (await kv.keys())||[]){if(String(k).startsWith("f:"))await file(String(k).slice(2))}
-    await file(P.lm);await file(P.kg);await goDate(S.date);
+    await file(P.lm);await file(P.kg);await file(P.rz);await goDate(S.date);
   }catch(e){$("#sync span").textContent="Lokaler Speicher nicht verfügbar: "+e.message}
   setSync(S.cfg.token?"busy":"local");
   syncAll();

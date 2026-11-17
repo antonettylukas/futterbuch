@@ -94,9 +94,14 @@ h3.sec{font-size:15px;margin:4px 0 0}
 video.scan{width:100%;border-radius:10px;background:#000;aspect-ratio:4/3;object-fit:cover}
 nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);display:flex;justify-content:center;padding:6px max(8px,env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left))}
 nav.tabs div{display:flex;gap:4px;width:100%;max-width:640px}
-nav.tabs button{flex:1;border:0;background:none;border-radius:10px;padding:10px 2px;font-weight:600;color:var(--muted);font-size:14px}
+nav.tabs button{flex:1;min-width:0;border:0;background:none;border-radius:10px;padding:10px 2px;font-weight:600;color:var(--muted);font-size:13.5px}
 nav.tabs button[aria-current="page"]{background:var(--accent-soft);color:var(--fg)}
 code{font-family:var(--num);font-size:.9em;background:var(--sunk);padding:1px 4px;border-radius:4px}
+textarea{width:100%;min-height:90px;padding:10px 11px;border-radius:9px;border:1px solid var(--line);background:var(--bg);font:inherit;resize:vertical}
+.zrow{display:grid;grid-template-columns:minmax(0,1fr) 84px 36px;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}
+.zrow .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.zrow input{padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);width:100%}
+.zrow button{border:1px solid var(--line);background:none;border-radius:8px;height:36px}
 ol.steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:14px}
 </style>
 </head>
@@ -110,13 +115,15 @@ ol.steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;f
   </header>
   <div class="sync" id="sync"><i></i><span>Lokal gespeichert</span></div>
   <section class="view" id="v-tag"></section>
+  <section class="view" id="v-rz" hidden></section>
   <section class="view" id="v-lm" hidden></section>
   <section class="view" id="v-kg" hidden></section>
   <section class="view" id="v-sync" hidden></section>
 </div>
 <nav class="tabs"><div>
   <button id="t-tag" aria-current="page">Tag</button>
-  <button id="t-lm">Lebensmittel</button>
+  <button id="t-rz">Rezepte</button>
+  <button id="t-lm">Produkte</button>
   <button id="t-kg">Gewicht</button>
   <button id="t-sync">Sync</button>
 </div></nav>
