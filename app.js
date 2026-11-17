@@ -3,7 +3,7 @@
    Dateiformat im Repo: {"version":1,"recs":{<schluessel>:{...,"u":<ms>}}}
    Abgleich pro Datensatz: der mit dem größeren "u" gewinnt; Löschen = {"del":true}. */
 "use strict";
-const VERSION = "9 (17.11. 19:05)";
+const VERSION = "10 (17.11. 19:50)";
 const DEF_REPO = "antonettylukas/futterbuch-_daten";
 const MEALS = [["frueh","Frühstück"],["mittag","Mittag"],["snack","Snack"],["abend","Abend"],["extra","Sonstiges"]];
 const MEALNAME = Object.fromEntries(MEALS);
@@ -393,26 +393,58 @@ function pickRecipe(onPick,meal){
     sh.querySelector("#cancel").onclick=closeSheet;
   });
 }
+function remainingFor(meal){
+  // Tagesziel minus bereits Eingetragenes minus geplante Mahlzeiten, die noch offen sind (ohne die gewählte)
+  const plan=dayPlan(S.date);if(!plan||!plan.ziele)return null;
+  const z=plan.ziele,ist=sum(dayLog(S.date));const keys=MEALS.map(m=>m[0]);
+  const logged=new Set(dayLog(S.date).map(e=>keys.includes(e.m)?e.m:"extra"));
+  const res=zero();const open=[];
+  for(const pm of plan.mahlzeiten||[]){if(pm.key===meal||logged.has(pm.key))continue;open.push(MEALNAME[pm.key]);add(res,sum(pm.items||[]))}
+  const t={};for(const k of ["kcal","p","kh","f"])t[k]=Math.max(0,(z[k]||0)-ist[k]-res[k]);
+  return {t,open};
+}
+function zero(){return {kcal:0,p:0,kh:0,f:0,bst:0}}
+function add(a,b){for(const k in a)a[k]+=b[k]||0;return a}
+function fitAmounts(items,t){
+  // Faktoren pro Zutat (0,25–3× Rezeptmenge) so wählen, dass kcal/P/KH/F möglichst genau den Zielwerten entsprechen
+  const K=["kcal","p","kh","f"],W={kcal:1,p:1.5,kh:1,f:1};
+  const N=items.map(z=>{const f=food(z.lm)||{};return K.map(k=>(Number(f[k])||0)*z.g/100)});
+  let x=items.map(()=>1);const T=K.map(k=>Math.max(t[k],1));
+  for(let it=0;it<4000;it++){
+    const s=K.map((_,j)=>N.reduce((a,n,i)=>a+n[j]*x[i],0));
+    const mean=x.reduce((a,b)=>a+b,0)/x.length;
+    x=x.map((xi,i)=>{let g=0;K.forEach((k,j)=>{g+=2*W[k]*(s[j]-T[j])/(T[j]*T[j])*N[i][j]});g+=0.02*(xi-mean);return Math.min(3,Math.max(0.25,xi-0.02*g))});
+  }
+  return items.map((z,i)=>({lm:z.lm,g:Math.round(z.g*x[i]/5)*5||Math.round(z.g*x[i])}));
+}
 function cookSheet(rid,meal){
   const r=recipe(rid);if(!r)return;
+  let items=(r.zutaten||[]).map(z=>({...z}));
   openSheet(`<h2>${esc(r.name)} eintragen</h2>
-    <div class="grid2">
-      <div class="field"><label for="pf">Portionen</label><input id="pf" inputmode="decimal" value="1"></div>
-      <div class="field"><label for="m">Mahlzeit</label><select id="m">${MEALS.map(([k,l])=>`<option value="${k}" ${k===meal?"selected":""}>${l}</option>`).join("")}</select></div>
-    </div>
-    <div class="chips"><button data-f="0.5">½</button><button data-f="1">1</button><button data-f="1.5">1½</button><button data-f="2">2</button></div>
+    <div class="field"><label for="m">Mahlzeit</label><select id="m">${MEALS.map(([k,l])=>`<option value="${k}" ${k===meal?"selected":""}>${l}</option>`).join("")}</select></div>
+    <div class="chips"><button data-f="0.5">½ Portion</button><button data-f="1">1</button><button data-f="1.5">1½</button><button data-f="2">2</button><button data-fit="1" style="border-color:var(--accent);color:var(--accent);font-weight:600">Passend zum Rest des Tages</button></div>
+    <div class="hint" id="fh" hidden></div>
+    <div id="zl"></div>
     <div class="preview num" id="pv"></div>
-    <div class="hint">Jede Zutat wird einzeln eingetragen, so kannst du danach Mengen noch anpassen.</div>
     <div class="btnrow"><button class="primary" id="ok">Eintragen</button><button class="ghost" id="cancel">Abbrechen</button></div>`,sh=>{
-    const pf=sh.querySelector("#pf"),pv=sh.querySelector("#pv");
-    const upd=()=>{const x=num(pf.value);if(!(x>0)){pv.textContent="Bitte Portionen eingeben.";return}const s=sum((r.zutaten||[]).map(z=>({lm:z.lm,g:z.g*x})));pv.textContent=`${r0(s.kcal)} kcal · Protein ${r1(s.p)} g · KH ${r1(s.kh)} g · Fett ${r1(s.f)} g`};
-    upd();pf.addEventListener("input",upd);
-    sh.querySelector(".chips").addEventListener("click",e=>{const b=e.target.closest("button");if(b){pf.value=b.dataset.f.replace(".",",");upd()}});
+    const zl=sh.querySelector("#zl"),pv=sh.querySelector("#pv"),fh=sh.querySelector("#fh");
+    let target=null;
+    const sumUp=()=>{const s=sum(items);pv.textContent=`${r0(s.kcal)} kcal · Protein ${r1(s.p)} g · KH ${r1(s.kh)} g · Fett ${r1(s.f)} g`+(target?`\nZiel: ${r0(target.kcal)} kcal · P ${r0(target.p)} · KH ${r0(target.kh)} · F ${r0(target.f)}`:"");pv.style.whiteSpace="pre-line"};
+    const draw=()=>{zl.innerHTML=items.map((z,i)=>`<div class="zrow" style="grid-template-columns:minmax(0,1fr) 90px"><span class="n">${esc(foodName(z.lm))}</span><input inputmode="decimal" data-zi="${i}" value="${String(z.g).replace(".",",")}" aria-label="Gramm"></div>`).join("");sumUp()};
+    draw();
+    zl.addEventListener("input",e=>{const i=e.target.dataset.zi;if(i==null)return;const x=num(e.target.value);if(x>=0){items[i].g=x;sumUp()}});
+    sh.querySelector(".chips").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;
+      if(b.dataset.fit){const rem=remainingFor(sh.querySelector("#m").value);fh.hidden=false;
+        if(!rem){fh.textContent="Für heute gibt es keinen Plan mit Zielen.";return}
+        target=rem.t;items=fitAmounts(r.zutaten||[],rem.t);
+        fh.textContent=(rem.t.kcal<150?"Achtung: Dein Tagesziel ist schon fast oder ganz erreicht, deshalb nur Mindestmengen. ":"")+"Berechnet aus Tagesziel minus Eingetragenem"+(rem.open.length?" minus noch geplant: "+rem.open.join(", "):"")+". Mengen kannst du unten noch ändern.";}
+      else{target=null;fh.hidden=true;items=(r.zutaten||[]).map(z=>({lm:z.lm,g:Math.round(z.g*Number(b.dataset.f)*10)/10}))}
+      draw()});
     sh.querySelector("#cancel").onclick=closeSheet;
     sh.querySelector("#ok").onclick=async()=>{
-      const x=num(pf.value);if(!(x>0))return;const m=sh.querySelector("#m").value;
+      const m=sh.querySelector("#m").value;
       const path=P.log(S.date);const f=await file(path);const t=nowHM();
-      (r.zutaten||[]).forEach((z,i)=>{f.recs[uid()+i]={d:S.date,m,lm:z.lm,g:Math.round(z.g*x*10)/10,t,rezept:rid,u:Date.now()}});
+      items.filter(z=>z.g>0).forEach((z,i)=>{f.recs[uid()+i]={d:S.date,m,lm:z.lm,g:Math.round(z.g*10)/10,t,rezept:rid,u:Date.now()}});
       f.dirty=true;await saveFile(path);closeSheet();if(S.tab!=="tag")setTab("tag");else render();scheduleSync(1500);
     };
   });
