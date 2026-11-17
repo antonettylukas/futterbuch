@@ -3,6 +3,7 @@
    Dateiformat im Repo: {"version":1,"recs":{<schluessel>:{...,"u":<ms>}}}
    Abgleich pro Datensatz: der mit dem größeren "u" gewinnt; Löschen = {"del":true}. */
 "use strict";
+const VERSION = "5 (17.11. 13:40)";
 const DEF_REPO = "antonettylukas/futterbuch-_daten";
 const MEALS = [["frueh","Frühstück"],["mittag","Mittag"],["snack","Snack"],["abend","Abend"],["extra","Sonstiges"]];
 const MEALNAME = Object.fromEntries(MEALS);
@@ -273,12 +274,13 @@ async function offSearch(t){
   try{
     const r=await fetch("https://search.openfoodfacts.org/search?page_size=30&langs=de,en&fields="+OFF_FIELDS+"&q="+encodeURIComponent(t));
     if(r.ok){const j=await r.json();return (j.hits||j.products||[]).map(h=>h._source||h)}
-    errs.push("Suche "+r.status);
-  }catch(e){errs.push(e.message)}
+    errs.push("Suche: Status "+r.status);
+  }catch(e){errs.push("Suche: "+e.message)}
   try{
     const r=await fetch(OFF+"/api/v2/search?page_size=30&fields="+OFF_FIELDS+"&categories_tags_de="+encodeURIComponent(t));
-    if(r.ok){const j=await r.json();if((j.products||[]).length)return j.products}
-  }catch(e){errs.push(e.message)}
+    if(r.ok){const j=await r.json();if((j.products||[]).length)return j.products;return []}
+    errs.push("API: Status "+r.status);
+  }catch(e){errs.push("API: "+e.message)}
   throw new Error(errs.join(", "));
 }
 function offSheet(query,onPick){
@@ -298,7 +300,7 @@ function offSheet(query,onPick){
         h.textContent=found.length?found.length+" Treffer (Werte pro 100 g):":"Nichts gefunden. Du kannst das Produkt unter „Produkte“ von Hand anlegen.";
         res.innerHTML=found.map((p,i)=>{const f=offToFood(p);return `<button class="row" data-i="${i}"><span class="n">${esc(f.name)}</span><span class="num">${r0(f.kcal)} kcal</span><span class="m">${esc(f.marke)}${p.quantity?" · "+esc(p.quantity):""} · P ${r1(f.p)} · KH ${r1(f.kh)} · F ${r1(f.f)}</span></button>`}).join("");
         res.hidden=!found.length;
-      }catch(e){h.textContent="Open Food Facts ist gerade nicht erreichbar ("+e.message+"). Bist du online?"}
+      }catch(e){h.textContent="Open Food Facts antwortet nicht ("+e.message+"). Version "+VERSION+"."}
     };
     sh.querySelector("#go").onclick=go;q.addEventListener("keydown",e=>{if(e.key==="Enter")go()});
     res.addEventListener("click",async e=>{const b=e.target.closest("[data-i]");if(!b)return;const id=await adoptOff(found[+b.dataset.i]);if(id)onPick(id)});
@@ -537,7 +539,7 @@ function renderSync(){
       <div class="field"><label for="repo">Daten-Repo</label><input id="repo" value="${esc(S.cfg.repo)}" autocapitalize="off" spellcheck="false"></div>
       <div class="field"><label for="tok">GitHub-Zugangsschlüssel</label><input id="tok" type="password" placeholder="${S.cfg.token?"gespeichert, zum Ändern neu einfügen":"github_pat_…"}" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
       <div class="btnrow"><button class="primary" type="submit">Speichern</button>${S.cfg.token?'<button class="ghost" type="button" id="forget">Schlüssel entfernen</button>':""}</div>
-      <div class="hint">Der Schlüssel bleibt nur auf diesem Gerät.</div>
+      <div class="hint">Der Schlüssel bleibt nur auf diesem Gerät. App-Version ${VERSION}.</div>
     </form>
     <div class="card konto"><h3 class="sec">Schlüssel erstellen (einmalig)</h3>
       <ol class="steps">
