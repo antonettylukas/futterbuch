@@ -3,7 +3,7 @@
    Dateiformat im Repo: {"version":1,"recs":{<schluessel>:{...,"u":<ms>}}}
    Abgleich pro Datensatz: der mit dem größeren "u" gewinnt; Löschen = {"del":true}. */
 "use strict";
-const VERSION = "5 (17.11. 13:40)";
+const VERSION = "6 (17.11. 14:15)";
 const DEF_REPO = "antonettylukas/futterbuch-_daten";
 const MEALS = [["frueh","Frühstück"],["mittag","Mittag"],["snack","Snack"],["abend","Abend"],["extra","Sonstiges"]];
 const MEALNAME = Object.fromEntries(MEALS);
@@ -268,20 +268,22 @@ async function offByCode(code){
   const r=await fetch(OFF+"/api/v2/product/"+encodeURIComponent(code)+".json?fields="+OFF_FIELDS);
   if(!r.ok)return null;const j=await r.json();return j.status===1?j.product:null;
 }
+const offCache=new Map();let offLast=0;
 async function offSearch(t){
-  // 1. neue Suche (search-a-licious, erlaubt Browser-Apps), 2. Rückfall auf die alte Suche
-  const errs=[];
-  try{
-    const r=await fetch("https://search.openfoodfacts.org/search?page_size=30&langs=de,en&fields="+OFF_FIELDS+"&q="+encodeURIComponent(t));
-    if(r.ok){const j=await r.json();return (j.hits||j.products||[]).map(h=>h._source||h)}
-    errs.push("Suche: Status "+r.status);
-  }catch(e){errs.push("Suche: "+e.message)}
-  try{
-    const r=await fetch(OFF+"/api/v2/search?page_size=30&fields="+OFF_FIELDS+"&categories_tags_de="+encodeURIComponent(t));
-    if(r.ok){const j=await r.json();if((j.products||[]).length)return j.products;return []}
-    errs.push("API: Status "+r.status);
-  }catch(e){errs.push("API: "+e.message)}
-  throw new Error(errs.join(", "));
+  // Open Food Facts erlaubt nur ~10 Suchen pro Minute; bei Überschreitung kommt die Antwort ohne CORS-Header ("Failed to fetch").
+  const key=norm(t);if(offCache.has(key))return offCache.get(key);
+  const url="https://search.openfoodfacts.org/search?page_size=30&langs=de,en&fields="+OFF_FIELDS+"&q="+encodeURIComponent(t);
+  for(let i=0;i<2;i++){
+    const wait=offLast+6500-Date.now();if(wait>0)await new Promise(r=>setTimeout(r,wait));
+    offLast=Date.now();
+    try{
+      const r=await fetch(url);
+      if(r.ok){const j=await r.json();const res=(j.hits||j.products||[]).map(h=>h._source||h);offCache.set(key,res);return res}
+      if(r.status!==429&&r.status<500)throw new Error("Status "+r.status);
+    }catch(e){if(i===1)throw new Error("zu viele Suchen kurz hintereinander oder Server überlastet")}
+    await new Promise(r=>setTimeout(r,8000));
+  }
+  throw new Error("zu viele Suchen kurz hintereinander");
 }
 function offSheet(query,onPick){
   openSheet(`<h2>Open Food Facts</h2>
@@ -292,7 +294,7 @@ function offSheet(query,onPick){
     const q=sh.querySelector("#oq"),res=sh.querySelector("#ores"),h=sh.querySelector("#oh");let found=[];
     const go=async()=>{
       const t=q.value.trim();if(!t)return;
-      h.textContent="Suche …";res.hidden=true;
+      h.textContent="Suche … (kann bis zu 15 Sekunden dauern)";res.hidden=true;
       try{
         if(/^\d{8,14}$/.test(t)){const p=await offByCode(t);found=p?[p]:[]}
         else found=await offSearch(t);
@@ -300,7 +302,7 @@ function offSheet(query,onPick){
         h.textContent=found.length?found.length+" Treffer (Werte pro 100 g):":"Nichts gefunden. Du kannst das Produkt unter „Produkte“ von Hand anlegen.";
         res.innerHTML=found.map((p,i)=>{const f=offToFood(p);return `<button class="row" data-i="${i}"><span class="n">${esc(f.name)}</span><span class="num">${r0(f.kcal)} kcal</span><span class="m">${esc(f.marke)}${p.quantity?" · "+esc(p.quantity):""} · P ${r1(f.p)} · KH ${r1(f.kh)} · F ${r1(f.f)}</span></button>`}).join("");
         res.hidden=!found.length;
-      }catch(e){h.textContent="Open Food Facts antwortet nicht ("+e.message+"). Version "+VERSION+"."}
+      }catch(e){h.textContent="Open Food Facts antwortet gerade nicht ("+e.message+"). Warte eine Minute und such nochmal. Barcode-Scan ist davon weniger betroffen."}
     };
     sh.querySelector("#go").onclick=go;q.addEventListener("keydown",e=>{if(e.key==="Enter")go()});
     res.addEventListener("click",async e=>{const b=e.target.closest("[data-i]");if(!b)return;const id=await adoptOff(found[+b.dataset.i]);if(id)onPick(id)});
