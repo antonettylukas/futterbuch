@@ -3,7 +3,7 @@
    Dateiformat im Repo: {"version":1,"recs":{<schluessel>:{...,"u":<ms>}}}
    Abgleich pro Datensatz: der mit dem größeren "u" gewinnt; Löschen = {"del":true}. */
 "use strict";
-const VERSION = "10 (17.11. 19:50)";
+const VERSION = "11 (18.11. 14:20)";
 const DEF_REPO = "antonettylukas/futterbuch-_daten";
 const MEALS = [["frueh","Frühstück"],["mittag","Mittag"],["snack","Snack"],["abend","Abend"],["extra","Sonstiges"]];
 const MEALNAME = Object.fromEntries(MEALS);
@@ -156,10 +156,10 @@ function renderTag(){
     const es=entries.filter(e=>(keys.includes(e.m)?e.m:"extra")===key);
     if(key==="extra"&&!es.length&&!pm)continue;
     const s=sum(es);
-    html+=`<article class="card meal"><header><h2>${esc(label)}</h2>${pm&&pm.zeit?`<span class="zeit num">${esc(pm.zeit)}</span>`:""}<span class="sum num">${r0(s.kcal)} kcal · ${r0(s.p)} g P</span></header>`;
+    html+=`<article class="card meal"><header><h2>${esc(label)}</h2>${pm&&pm.zeit?`<span class="zeit num">${esc(pm.zeit)}</span>`:""}<span class="sum num">${r0(s.kcal)} kcal · P ${r0(s.p)} · KH ${r0(s.kh)} · F ${r0(s.f)}</span></header>`;
     if(pm&&pm.items&&pm.items.length){
       const ps=sum(pm.items);
-      html+=`<div class="soll"><span class="t">Plan: ${esc(pm.name||label)} <span class="num">· ${r0(ps.kcal)} kcal · ${r0(ps.p)} g P</span></span>
+      html+=`<div class="soll"><span class="t">Plan: ${esc(pm.name||label)} <span class="num">· ${r0(ps.kcal)} kcal · P ${r0(ps.p)} · KH ${r0(ps.kh)} · F ${r0(ps.f)}</span></span>
         <span>${pm.items.map(it=>esc(foodName(it.lm))+" "+r0(it.g)+" g").join(" · ")}</span>
         <button data-plan="${key}">${es.length?"Plan nochmals dazu":"Wie geplant eintragen"}</button></div>`;
     }
