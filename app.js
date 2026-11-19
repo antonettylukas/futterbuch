@@ -3,7 +3,7 @@
    Dateiformat im Repo: {"version":1,"recs":{<schluessel>:{...,"u":<ms>}}}
    Abgleich pro Datensatz: der mit dem größeren "u" gewinnt; Löschen = {"del":true}. */
 "use strict";
-const VERSION = "16 (19.11. 22:45)";
+const VERSION = "17 (19.11. 22:45)";
 const DEF_REPO = "antonettylukas/futterbuch-_daten";
 const MEALS = [["frueh","Frühstück"],["mittag","Mittag"],["snack","Snack"],["abend","Abend"],["extra","Sonstiges"]];
 const MEALNAME = Object.fromEntries(MEALS);
@@ -170,7 +170,7 @@ function renderTag(){
   v.innerHTML=html;
 }
 function mealMacros(s){
-  const t=s.p*4+s.kh*4+s.f*9,pc=x=>t?" "+Math.round(x/t*100)+"%":"";
+  const pc=()=>"";
   return `<div class="mm"><span class="mk kc num">${r0(s.kcal)} kcal</span><span class="mk mp num">P ${r0(s.p)}${pc(s.p*4)}</span><span class="mk mkh num">KH ${r0(s.kh)}${pc(s.kh*4)}</span><span class="mk mf num">F ${r0(s.f)}${pc(s.f*9)}</span></div>`;
 }
 function planToLog(key){
