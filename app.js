@@ -3,7 +3,7 @@
    Dateiformat im Repo: {"version":1,"recs":{<schluessel>:{...,"u":<ms>}}}
    Abgleich pro Datensatz: der mit dem größeren "u" gewinnt; Löschen = {"del":true}. */
 "use strict";
-const VERSION = "15 (19.11. 22:45)";
+const VERSION = "16 (19.11. 22:45)";
 const DEF_REPO = "antonettylukas/futterbuch-_daten";
 const MEALS = [["frueh","Frühstück"],["mittag","Mittag"],["snack","Snack"],["abend","Abend"],["extra","Sonstiges"]];
 const MEALNAME = Object.fromEntries(MEALS);
@@ -169,15 +169,9 @@ function renderTag(){
   }
   v.innerHTML=html;
 }
-function pie(s){
-  const v=[[s.p*4,"var(--p)"],[s.kh*4,"var(--kh)"],[s.f*9,"var(--f)"]],t=v.reduce((x,y)=>x+y[0],0);
-  if(!t)return '<svg class="pie" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="14" fill="none" stroke="var(--track)" stroke-width="8"/></svg>';
-  let off=0;const C=2*Math.PI*14;
-  return '<svg class="pie" viewBox="0 0 36 36" role="img" aria-label="Kalorienanteile Protein, KH, Fett"><g transform="rotate(-90 18 18)">'+v.map(([x,c])=>{const l=x/t*C;const seg=`<circle cx="18" cy="18" r="14" fill="none" stroke="${c}" stroke-width="8" stroke-dasharray="${l} ${C-l}" stroke-dashoffset="${-off}"/>`;off+=l;return seg}).join("")+'</g></svg>';
-}
 function mealMacros(s){
-  const t=s.p*4+s.kh*4+s.f*9,pc=x=>t?Math.round(x/t*100)+"%":"";
-  return `<div class="mm">${S.cfg.pie!==false?pie(s):""}<span class="mk kc num">${r0(s.kcal)} kcal</span><span class="mk mp num">P ${r0(s.p)}${S.cfg.pie!==false&&t?" · "+pc(s.p*4):""}</span><span class="mk mkh num">KH ${r0(s.kh)}${S.cfg.pie!==false&&t?" · "+pc(s.kh*4):""}</span><span class="mk mf num">F ${r0(s.f)}${S.cfg.pie!==false&&t?" · "+pc(s.f*9):""}</span></div>`;
+  const t=s.p*4+s.kh*4+s.f*9,pc=x=>t?" "+Math.round(x/t*100)+"%":"";
+  return `<div class="mm"><span class="mk kc num">${r0(s.kcal)} kcal</span><span class="mk mp num">P ${r0(s.p)}${pc(s.p*4)}</span><span class="mk mkh num">KH ${r0(s.kh)}${pc(s.kh*4)}</span><span class="mk mf num">F ${r0(s.f)}${pc(s.f*9)}</span></div>`;
 }
 function planToLog(key){
   const pm=(dayPlan(S.date).mahlzeiten||[]).find(m=>m.key===key);if(!pm)return;
@@ -607,7 +601,6 @@ function renderSync(){
       <div class="field"><label for="repo">Daten-Repo</label><input id="repo" value="${esc(S.cfg.repo)}" autocapitalize="off" spellcheck="false"></div>
       <div class="field"><label for="tok">GitHub-Zugangsschlüssel</label><input id="tok" type="password" placeholder="${S.cfg.token?"gespeichert, zum Ändern neu einfügen":"github_pat_…"}" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
       <div class="btnrow"><button class="primary" type="submit">Speichern</button>${S.cfg.token?'<button class="ghost" type="button" id="forget">Schlüssel entfernen</button>':""}</div>
-      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="piecb" ${S.cfg.pie!==false?"checked":""}> Tortendiagramm bei den Mahlzeiten</label>
       <div class="hint">Der Schlüssel bleibt nur auf diesem Gerät. App-Version ${VERSION}.</div>
     </form>
     <div class="card konto"><h3 class="sec">Schlüssel erstellen (einmalig)</h3>
@@ -619,7 +612,6 @@ function renderSync(){
         <li>Erstellen, Schlüssel kopieren und oben einfügen.</li>
       </ol></div>`;
   v.querySelector("#now").onclick=()=>syncAll();
-  v.querySelector("#piecb").onchange=async e=>{S.cfg.pie=e.target.checked;await kv.set("cfg",S.cfg)};
   v.querySelector("#cf").addEventListener("submit",async e=>{
     e.preventDefault();const t=v.querySelector("#tok").value.trim();
     S.cfg.repo=v.querySelector("#repo").value.trim()||DEF_REPO;if(t)S.cfg.token=t;
