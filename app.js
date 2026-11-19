@@ -3,7 +3,7 @@
    Dateiformat im Repo: {"version":1,"recs":{<schluessel>:{...,"u":<ms>}}}
    Abgleich pro Datensatz: der mit dem größeren "u" gewinnt; Löschen = {"del":true}. */
 "use strict";
-const VERSION = "12 (19.11. 19:35)";
+const VERSION = "13 (19.11. 19:40)";
 const DEF_REPO = "antonettylukas/futterbuch-_daten";
 const MEALS = [["frueh","Frühstück"],["mittag","Mittag"],["snack","Snack"],["abend","Abend"],["extra","Sonstiges"]];
 const MEALNAME = Object.fromEntries(MEALS);
@@ -472,11 +472,14 @@ function recipeSheet(id,draft){
     const collect=()=>({...(id?recipe(id):{}),name:sh.querySelector("#r-name").value.trim(),kat:sh.querySelector("#r-kat").value.trim(),notiz:sh.querySelector("#r-notiz").value,zutaten:st.zutaten.filter(z=>z.g>0)});
     sh.querySelector("#zadd").onclick=()=>{
       const keep=collect();
-      openSheet(`<h2>Zutat hinzufügen</h2><input class="search" id="q" type="search" placeholder="Produkt suchen" autocomplete="off"><div class="list" id="res"></div><button class="ghost" id="back">Zurück</button>`,s2=>{
+      openSheet(`<h2>Zutat hinzufügen</h2><input class="search" id="q" type="search" placeholder="Produkt suchen" autocomplete="off"><div class="btnrow"><button class="ghost" id="zscan" style="flex:1">Barcode</button><button class="ghost" id="zoff" style="flex:1">Open Food Facts</button></div><div class="list" id="res"></div><button class="ghost" id="back">Zurück</button>`,s2=>{
         const q=s2.querySelector("#q"),res=s2.querySelector("#res");const d2=()=>{res.innerHTML=foodRows(searchFoods(q.value),"data-pick")};d2();q.addEventListener("input",d2);q.focus();
         const back=extra=>recipeSheet(id,{...keep,zutaten:[...keep.zutaten,...(extra?[extra]:[])]});
         res.addEventListener("click",e=>{const b=e.target.closest("[data-pick]");if(b){const f=food(b.dataset.pick);back({lm:b.dataset.pick,g:f.portion||100})}});
         s2.querySelector("#back").onclick=()=>back(null);
+        const pickId=id2=>{const f=food(id2);back({lm:id2,g:(f&&f.portion)||100})};
+        s2.querySelector("#zscan").onclick=()=>scanSheet(pickId);
+        s2.querySelector("#zoff").onclick=()=>offSheet(q.value,pickId);
       });
     };
     const save=async()=>{const out=collect();const fv=sh.querySelector("#fv");if(!out.name){fv.hidden=false;fv.textContent="Bitte einen Namen eingeben.";return false}delete out.u;delete out.id;await putRec(P.rz,id||("rz-"+uid()),out);return id||true};
