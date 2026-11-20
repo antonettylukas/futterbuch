@@ -3,7 +3,7 @@
    Dateiformat im Repo: {"version":1,"recs":{<schluessel>:{...,"u":<ms>}}}
    Abgleich pro Datensatz: der mit dem größeren "u" gewinnt; Löschen = {"del":true}. */
 "use strict";
-const VERSION = "17 (19.11. 22:45)";
+const VERSION = "18 (20.11. 20:45)";
 const DEF_REPO = "antonettylukas/futterbuch-_daten";
 const MEALS = [["frueh","Frühstück"],["mittag","Mittag"],["snack","Snack"],["abend","Abend"],["extra","Sonstiges"]];
 const MEALNAME = Object.fromEntries(MEALS);
@@ -459,13 +459,15 @@ function recipeSheet(id,draft){
   openSheet(`<h2>${id?"Rezept":"Neues Rezept"}</h2>
     <div class="grid2"><div class="field"><label for="r-name">Name</label><input id="r-name" value="${esc(r0_.name)}"></div>
     <div class="field"><label for="r-kat">Kategorie</label><input id="r-kat" list="katl" value="${esc(r0_.kat||"")}"><datalist id="katl"><option value="Hauptgericht"><option value="Frühstück"><option value="Snack"></datalist></div></div>
-    <div class="preview num" id="rs"></div>
+    <div class="rtabs"><button type="button" data-rt="z" aria-current="page">Zutaten</button><button type="button" data-rt="n">Zubereitung</button></div>
+    <div id="rt-z" style="display:flex;flex-direction:column;gap:12px"><div class="preview num" id="rs"></div>
     <div><span class="lbl">Zutaten pro Portion (g)</span><div id="zl"></div></div>
-    <button class="ghost" id="zadd">+ Zutat</button>
-    <div class="field"><label for="r-notiz">Zubereitung / Notizen</label><textarea id="r-notiz">${esc(r0_.notiz||"")}</textarea></div>
+    <button class="ghost" id="zadd">+ Zutat</button></div>
+    <div id="rt-n" hidden><div class="field"><label for="r-notiz">Zubereitung / Notizen</label><textarea id="r-notiz" style="min-height:45vh">${esc(r0_.notiz||"")}</textarea></div></div>
     <div class="fv preview" id="fv" hidden></div>
     <div class="btnrow">${id?'<button class="primary" id="cook">Eintragen</button>':""}<button class="${id?"ghost":"primary"}" id="ok" style="flex:1">Speichern</button>${id?'<button class="danger" id="del">Löschen</button>':""}<button class="ghost" id="cancel">Schließen</button></div>`,sh=>{
     const zl=sh.querySelector("#zl"),rs=sh.querySelector("#rs");
+    sh.querySelector(".rtabs").addEventListener("click",e=>{const b=e.target.closest("[data-rt]");if(!b)return;sh.querySelectorAll("[data-rt]").forEach(x=>x.setAttribute("aria-current",x===b?"page":"false"));sh.querySelector("#rt-z").hidden=b.dataset.rt!=="z";sh.querySelector("#rt-n").hidden=b.dataset.rt!=="n"});
     const draw=()=>{
       zl.innerHTML=st.zutaten.map((z,i)=>`<div class="zrow"><span class="n">${esc(foodName(z.lm))}</span><input inputmode="decimal" data-zi="${i}" value="${String(z.g).replace(".",",")}" aria-label="Gramm"><button data-zx="${i}" aria-label="Entfernen">✕</button></div>`).join("")||'<div class="hint">Noch keine Zutaten.</div>';
       const s=sum(st.zutaten);rs.textContent=`pro Portion: ${r0(s.kcal)} kcal · Protein ${r1(s.p)} g · KH ${r1(s.kh)} g · Fett ${r1(s.f)} g · Ballaststoffe ${r1(s.bst)} g`;
