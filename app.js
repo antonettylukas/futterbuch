@@ -3,7 +3,7 @@
    Dateiformat im Repo: {"version":1,"recs":{<schluessel>:{...,"u":<ms>}}}
    Abgleich pro Datensatz: der mit dem größeren "u" gewinnt; Löschen = {"del":true}. */
 "use strict";
-const VERSION = "18 (20.11. 20:45)";
+const VERSION = "19 (21.11.)";
 const DEF_REPO = "antonettylukas/futterbuch-_daten";
 const MEALS = [["frueh","Frühstück"],["mittag","Mittag"],["snack","Snack"],["abend","Abend"],["extra","Sonstiges"]];
 const MEALNAME = Object.fromEntries(MEALS);
@@ -277,14 +277,29 @@ async function offByCode(code){
 }
 const offCache=new Map();let offLast=0;
 const STOP=new Set(["mit","und","ohne","von","der","die","das","im","in","aus","tk","bio","de","la","le","au","a"]);
+function offJsonp(q){
+  // JSONP über ein <script>-Tag: braucht keine CORS-Header, daher keine "Failed to fetch"-Sperre im Browser
+  return new Promise((ok,no)=>{
+    const cb="offcb"+Date.now()+Math.floor(Math.random()*1e4),s=document.createElement("script");
+    const done=()=>{delete window[cb];s.remove();clearTimeout(t)};
+    const t=setTimeout(()=>{done();no(new Error("Zeitüberschreitung"))},15000);
+    window[cb]=j=>{done();ok(j.products||[])};
+    s.onerror=()=>{done();no(new Error("Failed to fetch"))};
+    s.src="https://world.openfoodfacts.org/cgi/search.pl?search_simple=1&action=process&json=1&page_size=40&lc=de&fields="+OFF_FIELDS+"&search_terms="+encodeURIComponent(q)+"&callback="+cb;
+    document.head.appendChild(s);
+  });
+}
 async function offQuery(q){
-  // Open Food Facts erlaubt nur ~10 Suchen pro Minute; abgelehnte oder fehlerhafte Antworten kommen ohne CORS-Header ("Failed to fetch").
   const key=norm(q);if(offCache.has(key))return offCache.get(key);
-  const wait=offLast+6500-Date.now();if(wait>0)await new Promise(r=>setTimeout(r,wait));
-  offLast=Date.now();
-  const r=await fetch("https://search.openfoodfacts.org/search?page_size=50&langs=de,en&fields="+OFF_FIELDS+"&q="+encodeURIComponent(q));
-  if(!r.ok)throw new Error("Status "+r.status);
-  const j=await r.json();const res=(j.hits||j.products||[]).map(h=>h._source||h);offCache.set(key,res);return res;
+  const wait=offLast+3000-Date.now();if(wait>0)await new Promise(r=>setTimeout(r,wait));
+  offLast=Date.now();let res;
+  try{res=await offJsonp(q)}
+  catch(e){
+    const r=await fetch("https://search.openfoodfacts.org/search?page_size=50&langs=de,en&fields="+OFF_FIELDS+"&q="+encodeURIComponent(q));
+    if(!r.ok)throw new Error("Status "+r.status);
+    const j=await r.json();res=(j.hits||j.products||[]).map(h=>h._source||h);
+  }
+  offCache.set(key,res);return res;
 }
 async function offSearch(t,onStatus){
   const words=norm(t).split(/[^a-z0-9äöüß]+/).filter(w=>w.length>1&&!STOP.has(w));
