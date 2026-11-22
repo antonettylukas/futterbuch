@@ -3,13 +3,13 @@
    Dateiformat im Repo: {"version":1,"recs":{<schluessel>:{...,"u":<ms>}}}
    Abgleich pro Datensatz: der mit dem größeren "u" gewinnt; Löschen = {"del":true}. */
 "use strict";
-const VERSION = "23 (22.11.)";
+const VERSION = "24 (22.11.)";
 const DEF_REPO = "antonettylukas/futterbuch-_daten";
 const MEALS = [["frueh","Frühstück"],["mittag","Mittag"],["snack","Snack"],["abend","Abend"],["extra","Sonstiges"]];
 const MEALNAME = Object.fromEntries(MEALS);
 const WD = ["So","Mo","Di","Mi","Do","Fr","Sa"];
 const OFF = "https://world.openfoodfacts.org";
-const OFF_FIELDS = "code,product_name,product_name_de,generic_name,brands,quantity,serving_quantity,nutriments";
+const OFF_FIELDS = "code,product_name,product_name_de,generic_name,brands,quantity,serving_quantity,serving_size,nutriments";
 
 /* ---------- kleine Helfer ---------- */
 const $ = s => document.querySelector(s);
@@ -226,13 +226,15 @@ function amountSheet(entry,id){
       <div class="field"><label for="g">Menge (g)</label><input id="g" inputmode="decimal" value="${esc(String(entry.g).replace(".",","))}"></div>
       <div class="field"><label for="m">Mahlzeit</label><select id="m">${MEALS.map(([k,l])=>`<option value="${k}" ${k===entry.m?"selected":""}>${l}</option>`).join("")}</select></div>
     </div>
-    <div class="chips">${f&&f.portion?`<button data-g="${f.portion}">1 Portion (${r0(f.portion)} g)</button>`:""}<button data-d="-10">−10</button><button data-d="10">+10</button><button data-d="50">+50</button><button data-d="100">+100</button></div>
+    <div class="chips">${f&&f.portion?[1,2,3].map(n=>`<button data-g="${Math.round(f.portion*n*10)/10}">${n} Portion${n>1?"en":""} (${r0(f.portion*n)} g)</button>`).join(""):""}<button data-d="-10">−10</button><button data-d="10">+10</button><button data-d="50">+50</button><button data-d="100">+100</button></div>
     <div class="field"><label for="n">Notiz (optional)</label><input id="n" value="${esc(entry.notiz||"")}"></div>
     <div class="preview num" id="pv"></div>
     <div class="btnrow"><button class="primary" id="ok">${id?"Speichern":"Eintragen"}</button>${id?'<button class="danger" id="del">Löschen</button>':""}<button class="ghost" id="cancel">Abbrechen</button></div>`,sh=>{
     const g=sh.querySelector("#g"),pv=sh.querySelector("#pv");
     const upd=()=>{const x=num(g.value);if(!(x>0)){pv.textContent="Bitte eine Menge in Gramm eingeben.";return}const n=nut(entry.lm,x);pv.textContent=`${r0(n.kcal)} kcal · Protein ${r1(n.p)} g · KH ${r1(n.kh)} g · Fett ${r1(n.f)} g · Ballaststoffe ${r1(n.bst)} g`};
     upd();g.addEventListener("input",upd);
+    if(f&&!f.portion&&f.code&&!f.portionGeprueft)offByCode(f.code).then(async p=>{const sq=p&&offPortion(p);const nf={...f,portionGeprueft:true};if(sq)nf.portion=sq;await putRec(P.lm,entry.lm,nf);
+      if(sq&&sh.isConnected){const c=sh.querySelector(".chips");c.insertAdjacentHTML("afterbegin",[1,2,3].map(n=>`<button data-g="${Math.round(sq*n*10)/10}">${n} Portion${n>1?"en":""} (${r0(sq*n)} g)</button>`).join(""))}}).catch(()=>{});
     if(!id){g.focus();g.select()}
     sh.querySelector(".chips").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;g.value=b.dataset.g?b.dataset.g:String(Math.max(0,(num(g.value)||0)+Number(b.dataset.d)));upd()});
     sh.querySelector("#cancel").onclick=closeSheet;
@@ -261,8 +263,13 @@ function offToFood(p){
   if(kcal==null)return null;
   const name=p.product_name_de||p.product_name||p.generic_name||("Produkt "+p.code);
   const rec={name:name.trim(),marke:(Array.isArray(p.brands)?p.brands.join(","):String(p.brands||"")).split(",")[0].trim(),kcal:Math.round(kcal*10)/10,p:+(n.proteins_100g||0),kh:+(n.carbohydrates_100g||0),f:+(n.fat_100g||0),bst:+(n.fiber_100g||0),zucker:+(n.sugars_100g||0),salz:+(n.salt_100g||0),code:String(p.code||""),quelle:"Open Food Facts"};
-  if(p.serving_quantity&&+p.serving_quantity>0)rec.portion=+p.serving_quantity;
+  const sq=offPortion(p);if(sq)rec.portion=sq;
   return rec;
+}
+function offPortion(p){
+  if(p.serving_quantity&&+p.serving_quantity>0)return +p.serving_quantity;
+  const m=String(p.serving_size||"").match(/(\d+(?:[.,]\d+)?)\s*(g|ml)\b/i);
+  return m?+m[1].replace(",","."):0;
 }
 async function adoptOff(p){
   const rec=offToFood(p);if(!rec)return null;
