@@ -3,7 +3,7 @@
    Dateiformat im Repo: {"version":1,"recs":{<schluessel>:{...,"u":<ms>}}}
    Abgleich pro Datensatz: der mit dem größeren "u" gewinnt; Löschen = {"del":true}. */
 "use strict";
-const VERSION = "22 (22.11.)";
+const VERSION = "23 (22.11.)";
 const DEF_REPO = "antonettylukas/futterbuch-_daten";
 const MEALS = [["frueh","Frühstück"],["mittag","Mittag"],["snack","Snack"],["abend","Abend"],["extra","Sonstiges"]];
 const MEALNAME = Object.fromEntries(MEALS);
@@ -201,13 +201,13 @@ function searchFoods(q){
 }
 function foodRows(list,attr){
   if(!list.length)return '<div class="leer" style="padding:12px 14px">Nichts gefunden.</div>';
-  return list.slice(0,80).map(f=>`<button class="row" ${attr}="${esc(f.id)}"><span class="n">${esc(f.name)}</span><span class="num">${r0(f.kcal)} kcal</span><span class="m">${esc(f.marke||"")}${f.marke?" · ":""}100 g: P ${r1(f.p)} · KH ${r1(f.kh)} · F ${r1(f.f)}</span></button>`).join("");
+  return list.slice(0,300).map(f=>`<button class="row" ${attr}="${esc(f.id)}"><span class="n">${esc(f.name)}</span><span class="num">${r0(f.kcal)} kcal</span><span class="m">${esc(f.marke||"")}${f.marke?" · ":""}100 g: P ${r1(f.p)} · KH ${r1(f.kh)} · F ${r1(f.f)}</span></button>`).join("");
 }
 function addFlow(meal){
   openSheet(`<h2>Eintragen: ${esc(MEALNAME[meal])}</h2>
     <input class="search" id="q" type="search" placeholder="In deinen Lebensmitteln suchen" autocomplete="off">
     <div class="btnrow"><button class="ghost" id="scan" style="flex:1">Barcode</button><button class="ghost" id="off" style="flex:1">Open Food Facts</button><button class="ghost" id="rzb" style="flex:1">Rezept</button></div>
-    <div class="list" id="res"></div>
+    <div class="list" id="res" style="overflow-y:auto;overscroll-behavior:contain;min-height:120px;flex:1 1 auto"></div>
     <button class="ghost" id="cancel">Abbrechen</button>`,sh=>{
     const q=sh.querySelector("#q"),res=sh.querySelector("#res");
     const draw=()=>{res.innerHTML=foodRows(searchFoods(q.value),"data-pick")};
@@ -493,7 +493,7 @@ function recipeSheet(id,draft){
     const collect=()=>({...(id?recipe(id):{}),name:sh.querySelector("#r-name").value.trim(),kat:sh.querySelector("#r-kat").value.trim(),notiz:sh.querySelector("#r-notiz").value,zutaten:st.zutaten.filter(z=>z.g>0)});
     sh.querySelector("#zadd").onclick=()=>{
       const keep=collect();
-      openSheet(`<h2>Zutat hinzufügen</h2><input class="search" id="q" type="search" placeholder="Produkt suchen" autocomplete="off"><div class="btnrow"><button class="ghost" id="zscan" style="flex:1">Barcode</button><button class="ghost" id="zoff" style="flex:1">Open Food Facts</button></div><div class="list" id="res"></div><button class="ghost" id="back">Zurück</button>`,s2=>{
+      openSheet(`<h2>Zutat hinzufügen</h2><input class="search" id="q" type="search" placeholder="Produkt suchen" autocomplete="off"><div class="btnrow"><button class="ghost" id="zscan" style="flex:1">Barcode</button><button class="ghost" id="zoff" style="flex:1">Open Food Facts</button></div><div class="list" id="res" style="overflow-y:auto;overscroll-behavior:contain;min-height:120px;flex:1 1 auto"></div><button class="ghost" id="back">Zurück</button>`,s2=>{
         const q=s2.querySelector("#q"),res=s2.querySelector("#res");const d2=()=>{res.innerHTML=foodRows(searchFoods(q.value),"data-pick")};d2();q.addEventListener("input",d2);q.focus();
         const back=extra=>recipeSheet(id,{...keep,zutaten:[...keep.zutaten,...(extra?[extra]:[])]});
         res.addEventListener("click",e=>{const b=e.target.closest("[data-pick]");if(b){const f=food(b.dataset.pick);back({lm:b.dataset.pick,g:f.portion||100})}});
