@@ -3,7 +3,7 @@
    Dateiformat im Repo: {"version":1,"recs":{<schluessel>:{...,"u":<ms>}}}
    Abgleich pro Datensatz: der mit dem größeren "u" gewinnt; Löschen = {"del":true}. */
 "use strict";
-const VERSION = "24 (22.11.)";
+const VERSION = "25 (23.11.)";
 const DEF_REPO = "antonettylukas/futterbuch-_daten";
 const MEALS = [["frueh","Frühstück"],["mittag","Mittag"],["snack","Snack"],["abend","Abend"],["extra","Sonstiges"]];
 const MEALNAME = Object.fromEntries(MEALS);
@@ -165,6 +165,7 @@ function renderTag(){
     }
     if(es.length) html+=`<ul class="rows">`+es.map(e=>{const n=nut(e.lm,e.g);return `<li><button class="row" data-edit="${esc(e.id)}"><span class="n">${esc(foodName(e.lm))}</span><span class="g num">${r1(e.g)} g</span><span class="m num">${r0(n.kcal)} kcal · P ${r1(n.p)} · KH ${r1(n.kh)} · F ${r1(n.f)}${e.notiz?" · "+esc(e.notiz):""}</span></button></li>`}).join("")+`</ul>`;
     else if(!pm) html+=`<div class="leer">Noch nichts eingetragen.</div>`;
+    if(key==="mittag")html+=`<button class="add" data-vortag="1" style="border-top-style:solid">↺ Abendessen von gestern übernehmen</button>`;
     html+=`<button class="add" data-add="${key}">+ Eintragen</button></article>`;
   }
   v.innerHTML=html;
@@ -172,6 +173,15 @@ function renderTag(){
 function mealMacros(s){
   const pc=()=>"";
   return `<div class="mm"><span class="mk kc num">${r0(s.kcal)} kcal</span><span class="mk mp num">P ${r0(s.p)}${pc(s.p*4)}</span><span class="mk mkh num">KH ${r0(s.kh)}${pc(s.kh*4)}</span><span class="mk mf num">F ${r0(s.f)}${pc(s.f*9)}</span></div>`;
+}
+function prevDay(d){const x=new Date(d+"T12:00:00");x.setDate(x.getDate()-1);return x.toISOString().slice(0,10)}
+async function copyDinner(btn){
+  const y=prevDay(S.date);await file(P.log(y));
+  const src=dayLog(y).filter(e=>e.m==="abend");
+  if(!src.length){btn.disabled=false;btn.textContent="Gestern Abend ist nichts eingetragen";return}
+  const path=P.log(S.date);const f=await file(path);const t=nowHM();
+  src.forEach((e,i)=>{const r={d:S.date,m:"mittag",lm:e.lm,g:e.g,t,vortag:true,u:Date.now()};if(e.notiz)r.notiz=e.notiz;if(e.rezept)r.rezept=e.rezept;f.recs[uid()+i]=r});
+  f.dirty=true;await saveFile(path);render();scheduleSync(1500);
 }
 function planToLog(key){
   const pm=(dayPlan(S.date).mahlzeiten||[]).find(m=>m.key===key);if(!pm)return;
@@ -666,6 +676,7 @@ $("#v-tag").addEventListener("click",e=>{
   if(a)addFlow(a.dataset.add);
   else if(ed){const en=dayLog(S.date).find(x=>x.id===ed.dataset.edit);if(en)amountSheet(en,en.id)}
   else if(pl){pl.disabled=true;planToLog(pl.dataset.plan)}
+  else if(e.target.closest("[data-vortag]")){const b=e.target.closest("[data-vortag]");b.disabled=true;copyDinner(b)}
 });
 document.addEventListener("keydown",e=>{if(e.key==="Escape")closeSheet()});
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"){if(S.date!==today()&&S._lastToday!==today()){S._lastToday=today()}syncAll()}});
